@@ -69,7 +69,7 @@ nav.scrolled {
 }
 .nav-links a {
   font-family: var(--font-body);
-  font-size: 0.85rem;
+  font-size: 1.4rem;
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -118,7 +118,7 @@ nav.scrolled {
 }
 .hero-rule::after { background: linear-gradient(to left, transparent, var(--bronze)); }
 .hero-rule-text {
-  font-size: 0.72rem;
+  font-size: 1.22rem;
   letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--bronze);
@@ -143,7 +143,7 @@ nav.scrolled {
 }
 .hero-tagline {
   margin-top: 2rem;
-  font-size: clamp(1rem, 2vw, 1.25rem);
+  font-size: clamp(2rem, 2vw, 1.25rem);
   font-weight: 300;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -155,7 +155,7 @@ nav.scrolled {
 .hero-sub {
   margin-top: 1.4rem;
   max-width: 500px;
-  font-size: 1.15rem;
+  font-size: 1.5rem;
   font-weight: 300;
   font-style: italic;
   color: var(--cream);
@@ -175,7 +175,7 @@ nav.scrolled {
 }
 .scroll-hint {
   position: absolute;
-  bottom: 2.5rem;
+  bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -186,7 +186,7 @@ nav.scrolled {
   animation: fadeUp 1s ease both 1s, bob 2s ease-in-out 2s infinite;
 }
 .scroll-hint span {
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 0.25em;
   text-transform: uppercase;
 }
@@ -253,7 +253,7 @@ nav.scrolled {
 
 /* ─── SECTION LABELS ─────────────────────────── */
 .section-label {
-  font-size: 0.72rem;
+  font-size: 1.22rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--bronze);
@@ -272,7 +272,7 @@ nav.scrolled {
   text-align: center;
   max-width: 520px;
   margin: 0 auto 4rem;
-  font-size: 1.05rem;
+  font-size: 1.5rem;
   font-style: italic;
   font-weight: 300;
   color: var(--cream);
@@ -370,7 +370,7 @@ nav.scrolled {
 
 .product-body { padding: 1.8rem 2rem 2rem; }
 .product-tag {
-  font-size: 0.68rem;
+  font-size: 1rem;
   letter-spacing: 0.25em;
   text-transform: uppercase;
   color: var(--bronze);
@@ -379,13 +379,13 @@ nav.scrolled {
 }
 .product-name {
   font-family: var(--font-head);
-  font-size: 1.6rem;
+  font-size: 1.75rem;
   color: var(--cream);
   line-height: 1.15;
   margin-bottom: 0.8rem;
 }
 .product-desc {
-  font-size: 0.95rem;
+  font-size: 1.22rem;
   font-weight: 300;
   font-style: italic;
   color: var(--cream);
@@ -405,7 +405,7 @@ nav.scrolled {
   color: var(--gold);
 }
 .product-dims {
-  font-size: 0.78rem;
+  font-size: 1.22rem;
   letter-spacing: 0.12em;
   color: var(--cream);
   opacity: 0.4;
@@ -474,7 +474,7 @@ nav.scrolled {
 .craft-content .section-title { text-align: left; font-size: clamp(1.8rem, 3.5vw, 2.8rem); }
 .craft-body {
   margin-top: 1.5rem;
-  font-size: 1.05rem;
+  font-size: 1.33rem;
   font-weight: 300;
   line-height: 1.9;
   color: var(--cream);
@@ -495,7 +495,7 @@ nav.scrolled {
   line-height: 1;
 }
 .craft-stat-label {
-  font-size: 0.72rem;
+  font-size: 0.9rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--cream);
@@ -594,3 +594,43 @@ footer {
   .hero { padding: 7rem 1.5rem 4rem; }
   footer { grid-template-columns: 1fr; }
 }
+#shop, #craft {
+  scroll-margin-top: 80px;
+}
+
+css/* ─── CONTACT FORM ───────────────────────────── */
+.footer-contact { grid-column: 1 / -1; }
+.footer-contact h4 {
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--bronze);
+  margin-bottom: 1.2rem;
+}
+.contact-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  max-width: 600px;
+}
+.contact-form input,
+.contact-form textarea {
+  background: rgba(92,58,30,0.15);
+  border: 1px solid rgba(205,127,50,0.2);
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  padding: 0.8rem 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+.contact-form input:focus,
+.contact-form textarea:focus { border-color: var(--bronze); }
+.contact-form input::placeholder,
+.contact-form textarea::placeholder { color: rgba(248,243,234,0.3); }
+.contact-form textarea {
+  grid-column: 1 / -1;
+  resize: vertical;
+}
+.contact-form .btn-primary { grid-column: 1 / -1; }
