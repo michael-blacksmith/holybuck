@@ -549,6 +549,7 @@ export function initKingScene(container, options = {}) {
   const castingPatternUrls = options.castingPatternUrls ??
     (options.castingPatternUrl ? [options.castingPatternUrl] : DEFAULT_PATTERN_URLS);
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const safariSafeMode = Boolean(options.safariSafeMode);
   const initializationStartedAt = performance.now();
 
   const scene = new THREE.Scene();
@@ -558,14 +559,14 @@ export function initKingScene(container, options = {}) {
 
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
-    antialias: true,
-    powerPreference: "high-performance",
+    antialias: !safariSafeMode,
+    powerPreference: safariSafeMode ? "default" : "high-performance",
   });
   renderer.setClearColor(INK_COLOR, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.08;
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !safariSafeMode;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;
   container.appendChild(renderer.domElement);
@@ -712,7 +713,7 @@ export function initKingScene(container, options = {}) {
     lastHeight = height;
     isMobile = width <= 640;
     const isTablet = width <= 900;
-    const pixelRatioCap = isMobile ? 1.25 : 1.5;
+    const pixelRatioCap = safariSafeMode ? 1 : (isMobile ? 1.25 : 1.5);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioCap));
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -720,7 +721,7 @@ export function initKingScene(container, options = {}) {
     container.dataset.pixelRatio = renderer.getPixelRatio().toFixed(2);
     container.dataset.viewportMode = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
 
-    const shadowSize = isMobile ? 512 : 1024;
+    const shadowSize = safariSafeMode ? 256 : (isMobile ? 512 : 1024);
     if (key.shadow.mapSize.x !== shadowSize) {
       key.shadow.map?.dispose();
       key.shadow.map = null;
@@ -811,7 +812,7 @@ export function initKingScene(container, options = {}) {
     fill.lookAt(stage.position);
     dust.visible = !isMobile;
     if (patternRoot) updatePatternFrameScale();
-    renderer.shadowMap.needsUpdate = true;
+    if (!safariSafeMode) renderer.shadowMap.needsUpdate = true;
   };
 
   const updatePatternFrameScale = () => {
@@ -1065,7 +1066,7 @@ export function initKingScene(container, options = {}) {
 
     const shadowInterval = isMobile ? 420 : 240;
     if (now - lastShadowTime >= shadowInterval) {
-      renderer.shadowMap.needsUpdate = true;
+      if (!safariSafeMode) renderer.shadowMap.needsUpdate = true;
       lastShadowTime = now;
     }
     renderer.render(scene, camera);
@@ -1279,7 +1280,7 @@ export function initKingScene(container, options = {}) {
         material.transparent = true;
         material.depthWrite = false;
       });
-      renderer.shadowMap.needsUpdate = true;
+      if (!safariSafeMode) renderer.shadowMap.needsUpdate = true;
       modelResult = "loaded";
       container.dataset.modelUrl = loadedModelUrl;
       container.dataset.naturalHeroRotation = [

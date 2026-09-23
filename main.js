@@ -42,14 +42,18 @@ let destroyHomepageAnimations = () => {};
 
 async function startExperience() {
   try {
+    const isIOSSafari = /iP(hone|ad|od)/.test(navigator.userAgent) &&
+      /WebKit/.test(navigator.userAgent) &&
+      !/(CriOS|FxiOS|EdgiOS|OPiOS)/.test(navigator.userAgent);
+
     sceneApi = initKingScene(sceneContainer, {
+      safariSafeMode: isIOSSafari,
       onLoadProgress: (progress) => loading.setProgress(progress),
       naturalModelUrls: ["./models/king-right-natural.glb"],
       modelUrls: ["./models/king-web.glb", "./models/king.glb"],
-      castingPatternUrls: [
-        "./models/plakingforwebsite-web.glb",
-        "./models/plakingforwebsite.glb",
-      ],
+      castingPatternUrls: isIOSSafari
+        ? ["./models/plakingforwebsite-web.glb"]
+        : ["./models/plakingforwebsite-web.glb", "./models/plakingforwebsite.glb"],
     });
 
     window.__HOLY_BUCK__ = Object.freeze({
