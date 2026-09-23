@@ -1,34 +1,120 @@
-/* ═══════════════════════════════════════════════
-   HOLY BUCK — main.js
-   "Cast to Last"
-═══════════════════════════════════════════════ */
+import { initHomepageAnimations } from "./animations.js?v=20260923-regression-fix";
+import { initIntroTimeline } from "./intro-timeline.js?v=20260923-regression-fix";
+import { initKingScene } from "./king-scene.js?v=20260923-fire-wave5";
+import { initLoadingLayer } from "./loading.js?v=20260923-regression-fix";
 
-// ─── STICKY NAV ───────────────────────────────
-const nav = document.getElementById('nav');
+function resetScrollPosition() {
+  const root = document.documentElement;
+  const previousBehavior = root.style.scrollBehavior;
+  root.style.scrollBehavior = "auto";
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  root.style.scrollBehavior = previousBehavior;
+}
 
-window.addEventListener('scroll', () => {
-  nav.classList.toggle('scrolled', window.scrollY > 60);
+function restoreInitialAnchor() {
+  const id = decodeURIComponent(window.location.hash.slice(1));
+  const target = id ? document.getElementById(id) : null;
+  if (!target) return;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: "auto", block: "start" });
+    });
+  });
+}
+
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+if (!window.location.hash) resetScrollPosition();
+window.addEventListener(
+  "pageshow",
+  () => {
+    if (!window.location.hash) resetScrollPosition();
+  },
+  { once: true },
+);
+
+const sceneContainer = document.querySelector("[data-king-scene]");
+const loading = initLoadingLayer(document.querySelector("[data-loading-layer]"));
+
+let sceneApi;
+let introTimeline;
+let destroyHomepageAnimations = () => {};
+
+async function startExperience() {
+  try {
+    sceneApi = initKingScene(sceneContainer, {
+      onLoadProgress: (progress) => loading.setProgress(progress),
+      naturalModelUrls: ["./models/king-right-natural.glb"],
+      modelUrls: ["./models/king-web.glb", "./models/king.glb"],
+      castingPatternUrls: [
+        "./models/plakingforwebsite-web.glb",
+        "./models/plakingforwebsite.glb",
+      ],
+    });
+
+    window.__HOLY_BUCK__ = Object.freeze({
+      diagnostics: () => sceneApi.getDiagnostics(),
+    });
+
+    const model = await sceneApi.ready;
+    const diagnostics = sceneApi.getDiagnostics();
+    sceneContainer.dataset.activeModel = diagnostics.modelUrl ?? "fallback";
+    sceneContainer.dataset.modelStatus = diagnostics.modelStatus;
+    loading.setProgress(1);
+
+    document.documentElement.classList.add("is-ready");
+    if (!window.location.hash) {
+      resetScrollPosition();
+    }
+    introTimeline = initIntroTimeline(sceneApi);
+    destroyHomepageAnimations = initHomepageAnimations(sceneApi);
+    introTimeline.refresh();
+    if (window.location.hash) {
+      restoreInitialAnchor();
+    } else {
+      const settleAtIntroStart = () => {
+        resetScrollPosition();
+        sceneApi.setSequenceProgress(0);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(settleAtIntroStart));
+    }
+
+    const revealPromise = sceneApi.reveal(720).catch((error) => {
+      console.error("[Holy Buck] The King reveal could not complete.", error);
+    });
+    await loading.hide();
+    if (!window.location.hash) {
+      resetScrollPosition();
+      sceneApi.setSequenceProgress(0);
+      introTimeline.refresh();
+    } else {
+      restoreInitialAnchor();
+    }
+    void revealPromise;
+
+  } catch (error) {
+    console.error("[Holy Buck] The cinematic experience could not initialize.", error);
+    await loading.hide();
+    document.documentElement.classList.add("is-ready", "no-webgl");
+  }
+}
+
+startExperience();
+
+const inquiryForm = document.querySelector("[data-inquiry-form]");
+inquiryForm?.addEventListener("submit", (event) => {
+  const destination = inquiryForm.dataset.liveDestination;
+  if (!destination) return;
+  event.preventDefault();
+  if (inquiryForm.reportValidity()) window.location.assign(destination);
 });
 
-// ─── SCROLL REVEAL ────────────────────────────
-const reveals = document.querySelectorAll('.reveal');
-
-const revealObserver = new IntersectionObserver((entries) => {
-  entries.forEach((entry) => {
-    if (!entry.isIntersecting) return;
-
-    // Stagger siblings that haven't revealed yet
-    const siblings = [
-      ...entry.target.parentElement.querySelectorAll('.reveal:not(.visible)')
-    ];
-    const delay = siblings.indexOf(entry.target) * 80;
-
-    setTimeout(() => {
-      entry.target.classList.add('visible');
-    }, delay);
-
-    revealObserver.unobserve(entry.target);
-  });
-}, { threshold: 0.12 });
-
-reveals.forEach(el => revealObserver.observe(el));
+window.addEventListener(
+  "pagehide",
+  () => {
+    introTimeline?.destroy();
+    destroyHomepageAnimations();
+    sceneApi?.destroy();
+  },
+  { once: true },
+);
