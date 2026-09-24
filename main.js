@@ -18,8 +18,8 @@ const IS_IOS_SAFARI =
 
 // iOS Safari diagnostic ladder. Change only this value between device tests.
 // 0 = V3 stable website; 1 = empty renderer; 2 = optimized King GLB;
-// 3 = lightweight WILD; 4 = visibly composited WILD with diagnostic idle motion.
-const IOS_SAFARI_3D_STAGE = 4;
+// 3 = lightweight WILD; 4 = visible WILD motion; 5 = restored Safari intro flow.
+const IOS_SAFARI_3D_STAGE = 5;
 
 // Keep the complete desktop King pipeline out of iOS Safari. Other browsers
 // begin fetching the existing production scene immediately and remain unchanged.
@@ -28,8 +28,14 @@ const kingSceneModulePromise = IS_IOS_SAFARI
   : import("./king-scene.js?v=20260923-fire-wave5");
 const iosSafariSceneModulePromise =
   IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 1
-    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage4")
+    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage5")
     : null;
+
+const USE_IOS_SAFARI_CINEMATIC = IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 2;
+
+if (USE_IOS_SAFARI_CINEMATIC && window.location.hash) {
+  history.replaceState(history.state, "", `${window.location.pathname}${window.location.search}`);
+}
 
 function resetScrollPosition() {
   const root = document.documentElement;
@@ -81,6 +87,54 @@ const diagnosticSceneApi = Object.freeze({
   setShowcasePresentation() {},
 });
 
+function initIOSSafariWildIntroFlow() {
+  const intro = document.querySelector("[data-intro]");
+  const pin = document.querySelector("[data-intro-pin]");
+  const sceneShell = document.querySelector("[data-scene-shell]");
+  const skipButton = document.querySelector("[data-skip-intro]");
+  const wild = document.querySelector('[data-stage="wild"]');
+  const laterStages = document.querySelectorAll('[data-stage]:not([data-stage="wild"])');
+
+  if (!intro || !pin || !sceneShell || !wild) {
+    throw new Error("[Holy Buck] Safari WILD intro structure is incomplete.");
+  }
+
+  intro.hidden = false;
+  intro.removeAttribute("aria-hidden");
+  intro.dataset.safariIntroActive = "true";
+  pin.hidden = false;
+  sceneShell.dataset.websiteState = "intro";
+  sceneShell.style.opacity = "1";
+  sceneShell.style.visibility = "visible";
+  sceneShell.style.transform = "none";
+  wild.style.opacity = "1";
+  wild.style.visibility = "visible";
+  wild.style.transform = "translateY(-50%)";
+  laterStages.forEach((stageElement) => {
+    stageElement.style.opacity = "0";
+    stageElement.style.visibility = "hidden";
+  });
+
+  const skip = () => document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" });
+  skipButton?.addEventListener("click", skip);
+  diagnosticSceneApi.setSequenceProgress(0);
+  diagnosticSceneApi.setRenderActive(true);
+
+  return {
+    refresh() {
+      intro.hidden = false;
+      sceneShell.dataset.websiteState = "intro";
+      sceneShell.style.opacity = "1";
+      sceneShell.style.visibility = "visible";
+      diagnosticSceneApi.setRenderActive(true);
+      iosSafariDiagnosticScene?.refresh?.();
+    },
+    destroy() {
+      skipButton?.removeEventListener("click", skip);
+    },
+  };
+}
+
 async function startIOSSafariDiagnostic() {
   let activeStage = 0;
 
@@ -120,17 +174,24 @@ async function startIOSSafariDiagnostic() {
   document.documentElement.setAttribute("data-ios-safari-3d-stage", String(activeStage));
 
   if (activeStage >= 2) {
-    document.documentElement.classList.remove("no-webgl");
-    sceneContainer?.removeAttribute("hidden");
-    sceneContainer?.setAttribute("aria-hidden", "true");
+    try {
+      document.documentElement.classList.remove("no-webgl");
+      sceneContainer?.removeAttribute("hidden");
+      sceneContainer?.setAttribute("aria-hidden", "true");
+      resetScrollPosition();
+      introTimeline = initIOSSafariWildIntroFlow();
+    } catch (error) {
+      console.error("[Holy Buck] Safari intro initialization failed; using Stage 0.", error);
+      introTimeline?.destroy();
+      introTimeline = undefined;
+      iosSafariDiagnosticScene?.destroy();
+      iosSafariDiagnosticScene = undefined;
+      activeStage = 0;
+      document.documentElement.setAttribute("data-ios-safari-3d-stage", "0");
+    }
+  }
 
-    iosSafariDiagnosticScene?.refresh?.();
-
-    const skipButton = document.querySelector("[data-skip-intro]");
-    const skip = () => document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" });
-    skipButton?.addEventListener("click", skip);
-    destroyIOSSafariDiagnosticUi = () => skipButton?.removeEventListener("click", skip);
-  } else {
+  if (activeStage < 2) {
     document.documentElement.classList.add("no-webgl");
     sceneContainer?.setAttribute("hidden", "");
     sceneContainer?.setAttribute("aria-hidden", "true");
@@ -148,12 +209,24 @@ async function startIOSSafariDiagnostic() {
     }),
   });
 
+  if (activeStage >= 2) resetScrollPosition();
   destroyHomepageAnimations = initHomepageAnimations(diagnosticSceneApi);
+  introTimeline?.refresh();
   loading.setProgress(1);
   await loading.hide();
   window.ScrollTrigger?.refresh?.();
 
-  if (window.location.hash) restoreInitialAnchor();
+  if (activeStage >= 2) {
+    resetScrollPosition();
+    introTimeline?.refresh();
+    window.ScrollTrigger?.refresh?.();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resetScrollPosition();
+        introTimeline?.refresh();
+      });
+    });
+  } else if (window.location.hash) restoreInitialAnchor();
   else resetScrollPosition();
 }
 

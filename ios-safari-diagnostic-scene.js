@@ -52,7 +52,7 @@ function disposeMaterial(material, disposedTextures) {
 
 export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}) {
   if (stage === 0) return null;
-  if (stage !== 1 && stage !== 2 && stage !== 3 && stage !== 4) {
+  if (stage !== 1 && stage !== 2 && stage !== 3 && stage !== 4 && stage !== 5) {
     throw new RangeError(`[Holy Buck] iOS Safari diagnostic stage ${stage} is not implemented.`);
   }
   if (!container) {
@@ -163,8 +163,9 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
         .getSize(new THREE.Vector3());
       let fittedCameraZ = camera.position.z;
       const fitCamera = () => {
-        const viewportWidth = Math.max(1, window.innerWidth);
-        const viewportHeight = Math.max(1, window.innerHeight);
+        const containerBounds = container.getBoundingClientRect();
+        const viewportWidth = Math.max(1, Math.round(containerBounds.width || window.innerWidth));
+        const viewportHeight = Math.max(1, Math.round(containerBounds.height || window.innerHeight));
         renderer.setSize(viewportWidth, viewportHeight, false);
         camera.aspect = viewportWidth / viewportHeight;
         const verticalFov = THREE.MathUtils.degToRad(camera.fov);
@@ -256,7 +257,7 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
           updateScrollMetrics();
           readScrollProgress();
           fitCamera();
-          if (!renderActive) renderer.render(scene, camera);
+          renderer.render(scene, camera);
         };
         const onVisibilityChange = () => {
           pageVisible = document.visibilityState === "visible";
@@ -303,6 +304,12 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
         stage,
         canvasConnected: Boolean(renderer?.domElement.isConnected),
         canvasVisible: renderer?.domElement.getClientRects().length > 0,
+        canvasDisplay: renderer ? getComputedStyle(renderer.domElement).display : null,
+        canvasOpacity: renderer ? getComputedStyle(renderer.domElement).opacity : null,
+        canvasVisibility: renderer ? getComputedStyle(renderer.domElement).visibility : null,
+        canvasWidth: renderer?.domElement.getBoundingClientRect().width ?? 0,
+        canvasHeight: renderer?.domElement.getBoundingClientRect().height ?? 0,
+        parentVisible: container.getClientRects().length > 0,
         modelLoaded,
         modelVisible: Boolean(modelRoot?.visible),
         animationFrameActive: stage >= 3 ? animationFrameId !== 0 : false,
