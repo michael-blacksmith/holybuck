@@ -17,8 +17,9 @@ const IS_IOS_SAFARI =
   !isAlternateIOSBrowser;
 
 // iOS Safari diagnostic ladder. Change only this value between device tests.
-// 0 = V3 stable website; 1 = empty renderer; 2 = optimized King GLB only.
-const IOS_SAFARI_3D_STAGE = 2;
+// 0 = V3 stable website; 1 = empty renderer; 2 = optimized King GLB;
+// 3 = lightweight WILD presentation and movement on that same geometry.
+const IOS_SAFARI_3D_STAGE = 3;
 
 // Keep the complete desktop King pipeline out of iOS Safari. Other browsers
 // begin fetching the existing production scene immediately and remain unchanged.
@@ -27,7 +28,7 @@ const kingSceneModulePromise = IS_IOS_SAFARI
   : import("./king-scene.js?v=20260923-fire-wave5");
 const iosSafariSceneModulePromise =
   IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 1
-    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage2")
+    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage3")
     : null;
 
 function resetScrollPosition() {
@@ -70,9 +71,13 @@ let destroyIOSSafariDiagnosticUi = () => {};
 let destroyHomepageAnimations = () => {};
 
 const diagnosticSceneApi = Object.freeze({
-  setRenderActive() {},
+  setRenderActive(active) {
+    iosSafariDiagnosticScene?.setRenderActive?.(active);
+  },
   setScrollProgress() {},
-  setSequenceProgress() {},
+  setSequenceProgress(progress) {
+    iosSafariDiagnosticScene?.setSequenceProgress?.(progress);
+  },
   setShowcasePresentation() {},
 });
 
@@ -97,12 +102,13 @@ async function startIOSSafariDiagnostic() {
   }
 
   document.documentElement.classList.add("is-ready", "ios-safari-diagnostic-v4");
-  document.documentElement.dataset.iosSafari3dStage = String(activeStage);
+  document.documentElement.setAttribute("data-ios-safari-3d-stage", String(activeStage));
 
   if (activeStage >= 2) {
     document.documentElement.classList.remove("no-webgl");
     sceneContainer?.removeAttribute("hidden");
     sceneContainer?.setAttribute("aria-hidden", "true");
+    iosSafariDiagnosticScene?.refresh?.();
 
     const skipButton = document.querySelector("[data-skip-intro]");
     const skip = () => document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" });

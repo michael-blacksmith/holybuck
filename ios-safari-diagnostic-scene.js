@@ -1,6 +1,44 @@
 import * as THREE from "three";
 
-const STAGE_2_MODEL_URL = "./models/king-web.glb";
+const SAFARI_KING_MODEL_URL = "./models/king-web.glb";
+
+function createWildMaterial() {
+  const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying vec3 vHbWildPosition;`,
+      )
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+vHbWildPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying vec3 vHbWildPosition;`,
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+float hbBurrBrown = smoothstep(0.08, 0.82, vHbWildPosition.x);
+float hbUnderside = 1.0 - smoothstep(-0.48, 0.08, vHbWildPosition.y);
+float hbBrownMix = clamp(max(hbBurrBrown, hbUnderside * 0.62), 0.0, 1.0);
+float hbGrain = sin(vHbWildPosition.x * 31.0 + vHbWildPosition.y * 17.0) * 0.5 + 0.5;
+vec3 hbIvory = vec3(0.66, 0.53, 0.39);
+vec3 hbUmber = vec3(0.22, 0.105, 0.045);
+vec3 hbNatural = mix(hbIvory, hbUmber, hbBrownMix);
+hbNatural *= mix(0.91, 1.06, hbGrain);
+diffuseColor.rgb *= hbNatural;`,
+      );
+  };
+  material.customProgramCacheKey = () => "holy-buck-ios-safari-wild-v1";
+  return material;
+}
 
 function disposeMaterial(material, disposedTextures) {
   if (!material) return;
@@ -14,7 +52,7 @@ function disposeMaterial(material, disposedTextures) {
 
 export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}) {
   if (stage === 0) return null;
-  if (stage !== 1 && stage !== 2) {
+  if (stage !== 1 && stage !== 2 && stage !== 3) {
     throw new RangeError(`[Holy Buck] iOS Safari diagnostic stage ${stage} is not implemented.`);
   }
   if (!container) {
@@ -25,6 +63,11 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
   let modelRoot;
   let diagnosticMaterial;
   const modelGeometries = new Set();
+  let animationFrameId = 0;
+  let removeStage3Listeners = () => {};
+  let refreshStage3Layout = () => {};
+  let updateSequenceProgress = () => {};
+  let updateRenderActive = () => {};
   let destroyed = false;
 
   const destroy = () => {
@@ -33,6 +76,8 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
     modelRoot?.removeFromParent();
     modelGeometries.forEach((geometry) => geometry.dispose());
     diagnosticMaterial?.dispose();
+    removeStage3Listeners();
+    cancelAnimationFrame(animationFrameId);
     renderer?.domElement.remove();
     renderer?.dispose();
     renderer?.forceContextLoss();
@@ -61,10 +106,10 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
     container.append(renderer.domElement);
     renderer.render(scene, camera);
 
-    if (stage === 2) {
+    if (stage >= 2) {
       const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
-      const gltf = await new GLTFLoader().loadAsync(STAGE_2_MODEL_URL);
-      if (!gltf?.scene) throw new Error("[Holy Buck] Stage 2 King GLB contained no scene.");
+      const gltf = await new GLTFLoader().loadAsync(SAFARI_KING_MODEL_URL);
+      if (!gltf?.scene) throw new Error(`[Holy Buck] Stage ${stage} King GLB contained no scene.`);
 
       modelRoot = new THREE.Group();
       const upright = new THREE.Group();
@@ -80,9 +125,9 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
       );
       modelRoot.add(facing);
 
-      diagnosticMaterial = new THREE.MeshLambertMaterial({
-        color: 0x765139,
-      });
+      diagnosticMaterial = stage === 3
+        ? createWildMaterial()
+        : new THREE.MeshLambertMaterial({ color: 0x765139 });
       const originalMaterials = new Set();
       modelRoot.traverse((object) => {
         if (!object.isMesh) return;
@@ -94,7 +139,7 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
         object.receiveShadow = false;
       });
       if (modelGeometries.size === 0) {
-        throw new Error("[Holy Buck] Stage 2 King GLB contained no mesh geometry.");
+        throw new Error(`[Holy Buck] Stage ${stage} King GLB contained no mesh geometry.`);
       }
 
       const disposedTextures = new Set();
@@ -102,7 +147,7 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
 
       modelRoot.updateMatrixWorld(true);
       const bounds = new THREE.Box3().setFromObject(modelRoot, true);
-      if (bounds.isEmpty()) throw new Error("[Holy Buck] Stage 2 King bounds were empty.");
+      if (bounds.isEmpty()) throw new Error(`[Holy Buck] Stage ${stage} King bounds were empty.`);
       const size = bounds.getSize(new THREE.Vector3());
       const center = bounds.getCenter(new THREE.Vector3());
       const largestDimension = Math.max(size.x, size.y, size.z, 0.001);
@@ -111,27 +156,132 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
       modelRoot.position.copy(center).multiplyScalar(-normalizedScale);
       modelRoot.updateMatrixWorld(true);
 
-      const fittedBounds = new THREE.Box3().setFromObject(modelRoot, true);
-      const fittedSize = fittedBounds.getSize(new THREE.Vector3());
-      const verticalFov = THREE.MathUtils.degToRad(camera.fov);
-      const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
-      const fitDistance = Math.max(
-        fittedSize.y / (2 * Math.tan(verticalFov / 2)),
-        fittedSize.x / (2 * Math.tan(horizontalFov / 2)),
-      );
-      camera.position.z = fitDistance * 1.18 + fittedSize.z * 0.5;
-      camera.far = camera.position.z + 10;
-      camera.updateProjectionMatrix();
+      const fittedSize = new THREE.Box3()
+        .setFromObject(modelRoot, true)
+        .getSize(new THREE.Vector3());
+      let fittedCameraZ = camera.position.z;
+      const fitCamera = () => {
+        const viewportWidth = Math.max(1, window.innerWidth);
+        const viewportHeight = Math.max(1, window.innerHeight);
+        renderer.setSize(viewportWidth, viewportHeight, false);
+        camera.aspect = viewportWidth / viewportHeight;
+        const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+        const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
+        const fitDistance = Math.max(
+          fittedSize.y / (2 * Math.tan(verticalFov / 2)),
+          fittedSize.x / (2 * Math.tan(horizontalFov / 2)),
+        );
+        fittedCameraZ = fitDistance * 1.18 + fittedSize.z * 0.5;
+        camera.position.z = fittedCameraZ;
+        camera.far = fittedCameraZ + 10;
+        camera.updateProjectionMatrix();
+      };
+      fitCamera();
 
-      scene.add(
-        new THREE.HemisphereLight(0xffe1b8, 0x080705, 2.2),
-        modelRoot,
-      );
+      scene.add(new THREE.HemisphereLight(0xffe1b8, 0x080705, stage === 3 ? 1.45 : 2.2));
+      if (stage === 3) {
+        const keyLight = new THREE.DirectionalLight(0xffc98f, 2.15);
+        keyLight.position.set(2.4, 3.1, 4.2);
+        keyLight.castShadow = false;
+        scene.add(keyLight);
+      }
+      scene.add(modelRoot);
       renderer.render(scene, camera);
+
+      if (stage === 3) {
+        const intro = document.querySelector("[data-intro]");
+        const baseRotation = modelRoot.rotation.clone();
+        const basePosition = modelRoot.position.clone();
+        let introTop = 0;
+        let scrollRange = 1;
+        let targetProgress = 0;
+        let currentProgress = 0;
+        let renderActive = true;
+        let lastTime = performance.now();
+
+        const updateScrollMetrics = () => {
+          introTop = intro?.offsetTop ?? 0;
+          scrollRange = Math.max(
+            1,
+            (intro?.offsetHeight ?? window.innerHeight) - window.innerHeight,
+          );
+        };
+        const readScrollProgress = () => {
+          targetProgress = THREE.MathUtils.clamp(
+            (window.scrollY - introTop) / scrollRange,
+            0,
+            1,
+          );
+        };
+        const scheduleFrame = () => {
+          if (animationFrameId || destroyed || !renderActive) return;
+          animationFrameId = requestAnimationFrame(renderFrame);
+        };
+        const renderFrame = (time) => {
+          animationFrameId = 0;
+          if (destroyed || !renderActive) {
+            return;
+          }
+          const delta = Math.min((time - lastTime) / 1000, 0.05);
+          lastTime = time;
+          const damping = 1 - Math.exp(-9 * delta);
+          currentProgress += (targetProgress - currentProgress) * damping;
+          const seconds = time * 0.001;
+
+          modelRoot.rotation.x =
+            baseRotation.x + Math.sin(seconds * 0.31) * 0.012 - currentProgress * 0.045;
+          modelRoot.rotation.y =
+            baseRotation.y + Math.sin(seconds * 0.23) * 0.018 + currentProgress * 0.14;
+          modelRoot.rotation.z = baseRotation.z - currentProgress * 0.018;
+          modelRoot.position.x = basePosition.x - currentProgress * 0.045;
+          modelRoot.position.y = basePosition.y + currentProgress * 0.055;
+          camera.position.x = currentProgress * 0.035;
+          camera.position.z = fittedCameraZ + currentProgress * 0.06;
+          renderer.render(scene, camera);
+          scheduleFrame();
+        };
+        const startRendering = () => {
+          lastTime = performance.now();
+          scheduleFrame();
+        };
+        const onScroll = () => readScrollProgress();
+        const onResize = () => {
+          updateScrollMetrics();
+          readScrollProgress();
+          fitCamera();
+          if (!renderActive) renderer.render(scene, camera);
+        };
+        refreshStage3Layout = onResize;
+
+        updateSequenceProgress = (progress) => {
+          targetProgress = THREE.MathUtils.clamp(progress, 0, 1);
+        };
+        updateRenderActive = (active) => {
+          renderActive = Boolean(active);
+          if (renderActive) startRendering();
+          else {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = 0;
+          }
+        };
+
+        updateScrollMetrics();
+        readScrollProgress();
+        window.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", onResize, { passive: true });
+        removeStage3Listeners = () => {
+          window.removeEventListener("scroll", onScroll);
+          window.removeEventListener("resize", onResize);
+        };
+        startRendering();
+      }
     }
 
     return {
       stage,
+      refresh: refreshStage3Layout,
+      setRenderActive: updateRenderActive,
+      setSequenceProgress: updateSequenceProgress,
       destroy,
     };
   } catch (error) {
