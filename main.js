@@ -1,14 +1,34 @@
 import { initHomepageAnimations } from "./animations.js?v=20260923-regression-fix";
 import { initIntroTimeline } from "./intro-timeline.js?v=20260923-regression-fix";
-import { initKingScene } from "./king-scene.js?v=20260923-fire-wave5";
 import { initLoadingLayer } from "./loading.js?v=20260923-regression-fix";
 
-const HB_UA = navigator.userAgent;
-const HB_IS_IPHONE_SAFARI =
-  /iPhone|iPad|iPod/.test(HB_UA) &&
-  /Safari/.test(HB_UA) &&
-  !/CriOS|FxiOS|EdgiOS|OPiOS/.test(HB_UA);
+const userAgent = navigator.userAgent;
+const isIOSOrIPadOS =
+  /iPad|iPhone|iPod/i.test(userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isAlternateIOSBrowser =
+  /CriOS|FxiOS|EdgiOS|OPiOS|GSA|DuckDuckGo|Brave|YaBrowser|Coast|FocusiOS/i.test(
+    userAgent,
+  );
+const IS_IOS_SAFARI =
+  isIOSOrIPadOS &&
+  /AppleWebKit/i.test(userAgent) &&
+  /Safari/i.test(userAgent) &&
+  !isAlternateIOSBrowser;
 
+// iOS Safari diagnostic ladder. Change only this value between device tests.
+// 0 = V3 stable website; 1 = empty renderer; 2 = optimized King GLB only.
+const IOS_SAFARI_3D_STAGE = 2;
+
+// Keep the complete desktop King pipeline out of iOS Safari. Other browsers
+// begin fetching the existing production scene immediately and remain unchanged.
+const kingSceneModulePromise = IS_IOS_SAFARI
+  ? null
+  : import("./king-scene.js?v=20260923-fire-wave5");
+const iosSafariSceneModulePromise =
+  IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 1
+    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage2")
+    : null;
 
 function resetScrollPosition() {
   const root = document.documentElement;
@@ -45,24 +65,91 @@ const loading = initLoadingLayer(document.querySelector("[data-loading-layer]"))
 
 let sceneApi;
 let introTimeline;
+let iosSafariDiagnosticScene;
+let destroyIOSSafariDiagnosticUi = () => {};
 let destroyHomepageAnimations = () => {};
+
+const diagnosticSceneApi = Object.freeze({
+  setRenderActive() {},
+  setScrollProgress() {},
+  setSequenceProgress() {},
+  setShowcasePresentation() {},
+});
+
+async function startIOSSafariDiagnostic() {
+  let activeStage = 0;
+
+  if (IOS_SAFARI_3D_STAGE >= 1) {
+    try {
+      const { initIOSSafariDiagnosticScene } = await iosSafariSceneModulePromise;
+      iosSafariDiagnosticScene = await initIOSSafariDiagnosticScene(sceneContainer, {
+        stage: IOS_SAFARI_3D_STAGE,
+      });
+      activeStage = iosSafariDiagnosticScene.stage;
+    } catch (error) {
+      iosSafariDiagnosticScene?.destroy();
+      iosSafariDiagnosticScene = undefined;
+      console.error(
+        `[Holy Buck] iOS Safari Diagnostic V4 Stage ${IOS_SAFARI_3D_STAGE} failed; using Stage 0.`,
+        error,
+      );
+    }
+  }
+
+  document.documentElement.classList.add("is-ready", "ios-safari-diagnostic-v4");
+  document.documentElement.dataset.iosSafari3dStage = String(activeStage);
+
+  if (activeStage >= 2) {
+    document.documentElement.classList.remove("no-webgl");
+    sceneContainer?.removeAttribute("hidden");
+    sceneContainer?.setAttribute("aria-hidden", "true");
+
+    const skipButton = document.querySelector("[data-skip-intro]");
+    const skip = () => document.querySelector("#home")?.scrollIntoView({ behavior: "smooth" });
+    skipButton?.addEventListener("click", skip);
+    destroyIOSSafariDiagnosticUi = () => skipButton?.removeEventListener("click", skip);
+  } else {
+    document.documentElement.classList.add("no-webgl");
+    sceneContainer?.setAttribute("hidden", "");
+    sceneContainer?.setAttribute("aria-hidden", "true");
+  }
+
+  window.__HOLY_BUCK__ = Object.freeze({
+    diagnostics: () => ({
+      iosSafariDiagnostic: true,
+      configuredStage: IOS_SAFARI_3D_STAGE,
+      activeStage,
+      webglInitialized: activeStage >= 1,
+      modelStatus: activeStage >= 2 ? "loaded" : activeStage === 1 ? "empty-scene" : "bypassed",
+      modelUrl: activeStage >= 2 ? "./models/king-web.glb" : null,
+    }),
+  });
+
+  destroyHomepageAnimations = initHomepageAnimations(diagnosticSceneApi);
+  loading.setProgress(1);
+  await loading.hide();
+  window.ScrollTrigger?.refresh?.();
+
+  if (window.location.hash) restoreInitialAnchor();
+  else resetScrollPosition();
+}
 
 async function startExperience() {
   try {
+    if (IS_IOS_SAFARI) {
+      await startIOSSafariDiagnostic();
+      return;
+    }
+
+    const { initKingScene } = await kingSceneModulePromise;
     sceneApi = initKingScene(sceneContainer, {
       onLoadProgress: (progress) => loading.setProgress(progress),
-      // iPhone Safari safe mode: avoid the heavy photogrammetry texture/model
-      // and never request the optional PLA model. Desktop stays unchanged.
-      naturalModelUrls: HB_IS_IPHONE_SAFARI
-        ? ["./models/king-web.glb"]
-        : ["./models/king-right-natural.glb"],
-      modelUrls: HB_IS_IPHONE_SAFARI
-        ? ["./models/king-web.glb"]
-        : ["./models/king-web.glb", "./models/king.glb"],
-      castingPatternUrls: HB_IS_IPHONE_SAFARI
-        ? []
-        : ["./models/plakingforwebsite-web.glb", "./models/plakingforwebsite.glb"],
-      safariSafeMode: HB_IS_IPHONE_SAFARI,
+      naturalModelUrls: ["./models/king-right-natural.glb"],
+      modelUrls: ["./models/king-web.glb", "./models/king.glb"],
+      castingPatternUrls: [
+        "./models/plakingforwebsite-web.glb",
+        "./models/plakingforwebsite.glb",
+      ],
     });
 
     window.__HOLY_BUCK__ = Object.freeze({
@@ -127,6 +214,8 @@ window.addEventListener(
   () => {
     introTimeline?.destroy();
     destroyHomepageAnimations();
+    destroyIOSSafariDiagnosticUi();
+    iosSafariDiagnosticScene?.destroy();
     sceneApi?.destroy();
   },
   { once: true },
