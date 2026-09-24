@@ -1134,6 +1134,49 @@ html.no-webgl .scene-shell__heat {
   display: none;
 }
 
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="3"] .cinematic {
+  min-height: 155svh;
+}
+
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="4"] .cinematic {
+  min-height: 155svh;
+}
+
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="3"] .cinematic__viewport {
+  position: sticky;
+  top: 0;
+}
+
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="4"] .cinematic__viewport {
+  position: sticky;
+  top: 0;
+}
+
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="4"]
+  .cinematic__viewport
+  > .scene-shell {
+  position: absolute;
+  z-index: 0;
+  display: block;
+  opacity: 1;
+  visibility: visible;
+}
+
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="4"]
+  .cinematic__viewport
+  > .scene-shell
+  .scene {
+  z-index: 2;
+}
+
+html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="4"]
+  .cinematic__viewport
+  > .scene-shell
+  canvas {
+  opacity: 1;
+  visibility: visible;
+}
+
 @media (max-width: 900px) {
   .scene-shell__glow,
   .scene-shell__cast-glow {

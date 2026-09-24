@@ -18,8 +18,8 @@ const IS_IOS_SAFARI =
 
 // iOS Safari diagnostic ladder. Change only this value between device tests.
 // 0 = V3 stable website; 1 = empty renderer; 2 = optimized King GLB;
-// 3 = lightweight WILD presentation and movement on that same geometry.
-const IOS_SAFARI_3D_STAGE = 3;
+// 3 = lightweight WILD; 4 = visibly composited WILD with diagnostic idle motion.
+const IOS_SAFARI_3D_STAGE = 4;
 
 // Keep the complete desktop King pipeline out of iOS Safari. Other browsers
 // begin fetching the existing production scene immediately and remain unchanged.
@@ -28,7 +28,7 @@ const kingSceneModulePromise = IS_IOS_SAFARI
   : import("./king-scene.js?v=20260923-fire-wave5");
 const iosSafariSceneModulePromise =
   IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 1
-    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage3")
+    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage4")
     : null;
 
 function resetScrollPosition() {
@@ -101,6 +101,21 @@ async function startIOSSafariDiagnostic() {
     }
   }
 
+  if (activeStage >= 4) {
+    const sceneShell = document.querySelector("[data-scene-shell]");
+    const introViewport = document.querySelector("[data-intro-pin]");
+    if (sceneShell && introViewport) {
+      introViewport.prepend(sceneShell);
+    } else {
+      console.error(
+        "[Holy Buck] Safari Stage 4 intro compositing targets are missing; using Stage 0.",
+      );
+      iosSafariDiagnosticScene?.destroy();
+      iosSafariDiagnosticScene = undefined;
+      activeStage = 0;
+    }
+  }
+
   document.documentElement.classList.add("is-ready", "ios-safari-diagnostic-v4");
   document.documentElement.setAttribute("data-ios-safari-3d-stage", String(activeStage));
 
@@ -108,6 +123,7 @@ async function startIOSSafariDiagnostic() {
     document.documentElement.classList.remove("no-webgl");
     sceneContainer?.removeAttribute("hidden");
     sceneContainer?.setAttribute("aria-hidden", "true");
+
     iosSafariDiagnosticScene?.refresh?.();
 
     const skipButton = document.querySelector("[data-skip-intro]");
@@ -128,6 +144,7 @@ async function startIOSSafariDiagnostic() {
       webglInitialized: activeStage >= 1,
       modelStatus: activeStage >= 2 ? "loaded" : activeStage === 1 ? "empty-scene" : "bypassed",
       modelUrl: activeStage >= 2 ? "./models/king-web.glb" : null,
+      scene: iosSafariDiagnosticScene?.getDiagnostics?.() ?? null,
     }),
   });
 
