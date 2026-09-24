@@ -1134,6 +1134,125 @@ html.no-webgl .scene-shell__heat {
   display: none;
 }
 
+html.ios-safari-cinematic-active,
+html.ios-safari-cinematic-active body {
+  overflow: hidden;
+}
+
+html.ios-safari-cinematic-active .cinematic,
+html.ios-safari-cinematic-active .website {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.ios-safari-cinematic-active.ios-safari-cinematic-releasing .cinematic {
+  display: none;
+}
+
+html.ios-safari-cinematic-active.ios-safari-cinematic-releasing .website {
+  visibility: visible;
+  pointer-events: none;
+}
+
+.ios-safari-cinematic {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  width: 100vw;
+  height: 100svh;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 66% 48%, rgba(93, 67, 44, 0.13), transparent 29rem),
+    #080705;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 650ms ease, visibility 650ms linear;
+  isolation: isolate;
+}
+
+.ios-safari-cinematic.is-complete {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ios-safari-cinematic__scene,
+.ios-safari-cinematic__scene > .scene {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+  visibility: visible;
+}
+
+.ios-safari-cinematic__scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+  visibility: visible;
+}
+
+.ios-safari-cinematic__header {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(1.5rem, 4.1vh, 2.8rem) var(--page-gutter);
+}
+
+.ios-safari-cinematic__brand,
+.ios-safari-cinematic__skip {
+  color: var(--ivory);
+  font-size: 0.63rem;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+}
+
+.ios-safari-cinematic__skip {
+  padding: 0.6rem 0;
+  border: 0;
+  background: transparent;
+  color: rgba(238, 231, 218, 0.48);
+}
+
+.ios-safari-cinematic__stage {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: -4vw;
+  left: -4vw;
+  margin: 0;
+  color: rgba(238, 231, 218, 0.115);
+  font-family: var(--font-display);
+  font-size: clamp(7rem, 25vw, 26rem);
+  font-weight: 400;
+  line-height: 0.72;
+  letter-spacing: 0.025em;
+  text-align: center;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.ios-safari-cinematic__cue {
+  position: absolute;
+  z-index: 5;
+  right: var(--page-gutter);
+  bottom: clamp(1.6rem, 4vh, 2.8rem);
+  color: rgba(238, 231, 218, 0.3);
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+}
+
 html.ios-safari-diagnostic-v4[data-ios-safari-3d-stage="3"] .cinematic {
   min-height: 155svh;
 }

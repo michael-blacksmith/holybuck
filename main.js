@@ -18,8 +18,9 @@ const IS_IOS_SAFARI =
 
 // iOS Safari diagnostic ladder. Change only this value between device tests.
 // 0 = V3 stable website; 1 = empty renderer; 2 = optimized King GLB;
-// 3 = lightweight WILD; 4 = visible WILD motion; 5 = restored Safari intro flow.
-const IOS_SAFARI_3D_STAGE = 5;
+// 3 = lightweight WILD; 4 = visible WILD motion; 5 = restored desktop intro flow;
+// 6 = Safari-owned WILD -> DIGITIZED -> FORMED cinematic overlay.
+const IOS_SAFARI_3D_STAGE = 6;
 
 // Keep the complete desktop King pipeline out of iOS Safari. Other browsers
 // begin fetching the existing production scene immediately and remain unchanged.
@@ -28,7 +29,7 @@ const kingSceneModulePromise = IS_IOS_SAFARI
   : import("./king-scene.js?v=20260923-fire-wave5");
 const iosSafariSceneModulePromise =
   IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 1
-    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage5")
+    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage6")
     : null;
 
 const USE_IOS_SAFARI_CINEMATIC = IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 2;
@@ -73,6 +74,7 @@ const loading = initLoadingLayer(document.querySelector("[data-loading-layer]"))
 let sceneApi;
 let introTimeline;
 let iosSafariDiagnosticScene;
+let iosSafariCinematicOverlay;
 let destroyIOSSafariDiagnosticUi = () => {};
 let destroyHomepageAnimations = () => {};
 
@@ -86,6 +88,130 @@ const diagnosticSceneApi = Object.freeze({
   },
   setShowcasePresentation() {},
 });
+
+function createIOSSafariCinematicOverlay() {
+  if (!sceneContainer) throw new Error("[Holy Buck] Safari cinematic scene container is missing.");
+
+  const element = document.createElement("section");
+  element.className = "ios-safari-cinematic";
+  element.setAttribute("data-ios-safari-cinematic", "");
+  element.setAttribute("aria-label", "The King transformation");
+  element.innerHTML = `
+    <div class="ios-safari-cinematic__scene" data-ios-safari-scene></div>
+    <header class="ios-safari-cinematic__header">
+      <span class="ios-safari-cinematic__brand">HOLY BUCK</span>
+      <button class="ios-safari-cinematic__skip" type="button" data-ios-safari-skip>SKIP INTRO</button>
+    </header>
+    <h2 class="ios-safari-cinematic__stage" data-ios-safari-stage>WILD</h2>
+    <span class="ios-safari-cinematic__cue">CAST TO LAST</span>
+  `;
+
+  const sceneMount = element.querySelector("[data-ios-safari-scene]");
+  const stageLabel = element.querySelector("[data-ios-safari-stage]");
+  const skipButton = element.querySelector("[data-ios-safari-skip]");
+  let resolveSkip;
+  const skipped = new Promise((resolve) => {
+    resolveSkip = resolve;
+  });
+  const skip = () => resolveSkip({ completed: false, skipped: true });
+  skipButton.addEventListener("click", skip, { once: true });
+
+  sceneMount.append(sceneContainer);
+  document.body.append(element);
+  document.documentElement.classList.add("ios-safari-cinematic-active");
+
+  return {
+    element,
+    skipped,
+    setStage(stageName) {
+      const normalized = String(stageName).toLowerCase();
+      element.dataset.stage = normalized;
+      stageLabel.textContent = String(stageName).toUpperCase();
+    },
+    async fadeOut() {
+      document.documentElement.classList.add("ios-safari-cinematic-releasing");
+      element.classList.add("is-complete");
+      await new Promise((resolve) => setTimeout(resolve, 680));
+    },
+    destroy() {
+      skipButton.removeEventListener("click", skip);
+      element.remove();
+      document.documentElement.classList.remove(
+        "ios-safari-cinematic-active",
+        "ios-safari-cinematic-releasing",
+      );
+    },
+  };
+}
+
+async function revealWebsiteAfterSafariCinematic({ hideLoading = false } = {}) {
+  document.documentElement.classList.remove("ios-safari-cinematic-active");
+  document.documentElement.classList.remove("ios-safari-cinematic-releasing");
+  document.documentElement.classList.add("is-ready", "no-webgl", "ios-safari-diagnostic-v4");
+  resetScrollPosition();
+  destroyHomepageAnimations = initHomepageAnimations(diagnosticSceneApi);
+  if (hideLoading) await loading.hide();
+  window.ScrollTrigger?.refresh?.();
+  requestAnimationFrame(() => requestAnimationFrame(resetScrollPosition));
+}
+
+async function startIOSSafariStage6() {
+  let activeStage = 0;
+  let sequenceComplete = false;
+
+  try {
+    iosSafariCinematicOverlay = createIOSSafariCinematicOverlay();
+    const { initIOSSafariDiagnosticScene } = await iosSafariSceneModulePromise;
+    iosSafariDiagnosticScene = await initIOSSafariDiagnosticScene(sceneContainer, {
+      stage: IOS_SAFARI_3D_STAGE,
+    });
+    activeStage = iosSafariDiagnosticScene.stage;
+    document.documentElement.classList.add("is-ready", "ios-safari-diagnostic-v4");
+    document.documentElement.classList.remove("no-webgl");
+    document.documentElement.setAttribute("data-ios-safari-3d-stage", String(activeStage));
+    sceneContainer.removeAttribute("hidden");
+    sceneContainer.setAttribute("aria-hidden", "true");
+    iosSafariDiagnosticScene.refresh?.();
+
+    window.__HOLY_BUCK__ = Object.freeze({
+      diagnostics: () => ({
+        iosSafariDiagnostic: true,
+        configuredStage: IOS_SAFARI_3D_STAGE,
+        activeStage,
+        sequenceComplete,
+        modelUrl: "./models/king-web.glb",
+        scene: iosSafariDiagnosticScene?.getDiagnostics?.() ?? null,
+      }),
+    });
+
+    loading.setProgress(1);
+    await loading.hide();
+    iosSafariDiagnosticScene.refresh?.();
+    iosSafariDiagnosticScene.setRenderActive?.(true);
+
+    const sequence = iosSafariDiagnosticScene.startSequence({
+      onStageChange: (stageName) => iosSafariCinematicOverlay?.setStage(stageName),
+    });
+    const result = await Promise.race([sequence, iosSafariCinematicOverlay.skipped]);
+    sequenceComplete = Boolean(result?.completed);
+    await iosSafariCinematicOverlay.fadeOut();
+
+    iosSafariDiagnosticScene.destroy();
+    iosSafariDiagnosticScene = undefined;
+    iosSafariCinematicOverlay.destroy();
+    iosSafariCinematicOverlay = undefined;
+    await revealWebsiteAfterSafariCinematic();
+  } catch (error) {
+    console.error("[Holy Buck] Safari Stage 6 failed; revealing the stable website.", error);
+    iosSafariDiagnosticScene?.destroy();
+    iosSafariDiagnosticScene = undefined;
+    iosSafariCinematicOverlay?.destroy();
+    iosSafariCinematicOverlay = undefined;
+    activeStage = 0;
+    document.documentElement.setAttribute("data-ios-safari-3d-stage", "0");
+    await revealWebsiteAfterSafariCinematic({ hideLoading: true });
+  }
+}
 
 function initIOSSafariWildIntroFlow() {
   const intro = document.querySelector("[data-intro]");
@@ -136,6 +262,11 @@ function initIOSSafariWildIntroFlow() {
 }
 
 async function startIOSSafariDiagnostic() {
+  if (IOS_SAFARI_3D_STAGE >= 6) {
+    await startIOSSafariStage6();
+    return;
+  }
+
   let activeStage = 0;
 
   if (IOS_SAFARI_3D_STAGE >= 1) {
@@ -311,6 +442,7 @@ window.addEventListener(
     introTimeline?.destroy();
     destroyHomepageAnimations();
     destroyIOSSafariDiagnosticUi();
+    iosSafariCinematicOverlay?.destroy();
     iosSafariDiagnosticScene?.destroy();
     sceneApi?.destroy();
   },

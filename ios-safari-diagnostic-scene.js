@@ -2,14 +2,18 @@ import * as THREE from "three";
 
 const SAFARI_KING_MODEL_URL = "./models/king-web.glb";
 
-function createWildMaterial() {
+function createSafariMaterial(stage) {
   const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const sequenceProgress = { value: 0 };
+  material.userData.hbSequenceProgress = sequenceProgress;
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.hbSequenceProgress = sequenceProgress;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
         `#include <common>
-varying vec3 vHbWildPosition;`,
+varying vec3 vHbWildPosition;
+uniform float hbSequenceProgress;`,
       )
       .replace(
         "#include <begin_vertex>",
@@ -20,7 +24,8 @@ vHbWildPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
       .replace(
         "#include <common>",
         `#include <common>
-varying vec3 vHbWildPosition;`,
+varying vec3 vHbWildPosition;
+uniform float hbSequenceProgress;`,
       )
       .replace(
         "#include <color_fragment>",
@@ -33,10 +38,23 @@ vec3 hbIvory = vec3(0.66, 0.53, 0.39);
 vec3 hbUmber = vec3(0.22, 0.105, 0.045);
 vec3 hbNatural = mix(hbIvory, hbUmber, hbBrownMix);
 hbNatural *= mix(0.91, 1.06, hbGrain);
-diffuseColor.rgb *= hbNatural;`,
+${stage >= 6 ? `float hbWildToDigital = smoothstep(0.24, 0.43, hbSequenceProgress);
+float hbDigitalToFormed = smoothstep(0.64, 0.83, hbSequenceProgress);
+vec3 hbGraphite = vec3(0.105, 0.112, 0.112) * mix(0.88, 1.12, hbGrain);
+vec3 hbFormed = vec3(0.78, 0.745, 0.66) * mix(0.96, 1.035, hbGrain);
+vec3 hbStateColor = mix(hbNatural, hbGraphite, hbWildToDigital);
+hbStateColor = mix(hbStateColor, hbFormed, hbDigitalToFormed);
+float hbScanTravel = smoothstep(0.2, 0.46, hbSequenceProgress);
+float hbScanCenter = mix(-0.72, 0.72, hbScanTravel);
+float hbScanWindow = smoothstep(0.18, 0.24, hbSequenceProgress) *
+  (1.0 - smoothstep(0.44, 0.5, hbSequenceProgress));
+float hbScanBand = (1.0 - smoothstep(0.018, 0.075, abs(vHbWildPosition.y - hbScanCenter))) * hbScanWindow;
+hbStateColor += vec3(0.24, 0.22, 0.18) * hbScanBand;
+diffuseColor.rgb *= hbStateColor;` : "diffuseColor.rgb *= hbNatural;"}`,
       );
   };
-  material.customProgramCacheKey = () => "holy-buck-ios-safari-wild-v1";
+  material.customProgramCacheKey = () =>
+    stage >= 6 ? "holy-buck-ios-safari-sequence-v1" : "holy-buck-ios-safari-wild-v1";
   return material;
 }
 
@@ -52,7 +70,7 @@ function disposeMaterial(material, disposedTextures) {
 
 export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}) {
   if (stage === 0) return null;
-  if (stage !== 1 && stage !== 2 && stage !== 3 && stage !== 4 && stage !== 5) {
+  if (![1, 2, 3, 4, 5, 6].includes(stage)) {
     throw new RangeError(`[Holy Buck] iOS Safari diagnostic stage ${stage} is not implemented.`);
   }
   if (!container) {
@@ -68,6 +86,10 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
   let refreshStage3Layout = () => {};
   let updateSequenceProgress = () => {};
   let updateRenderActive = () => {};
+  let startStage6Sequence = () => Promise.resolve({ completed: false });
+  let sequencePhase = "idle";
+  let sequenceProgress = 0;
+  let resolvePendingSequence;
   let modelLoaded = false;
   let destroyed = false;
 
@@ -79,6 +101,7 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
     diagnosticMaterial?.dispose();
     removeStage3Listeners();
     cancelAnimationFrame(animationFrameId);
+    resolvePendingSequence?.({ completed: false, destroyed: true });
     renderer?.domElement.remove();
     renderer?.dispose();
     renderer?.forceContextLoss();
@@ -127,7 +150,7 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
       modelRoot.add(facing);
 
       diagnosticMaterial = stage >= 3
-        ? createWildMaterial()
+        ? createSafariMaterial(stage)
         : new THREE.MeshLambertMaterial({ color: 0x765139 });
       const originalMaterials = new Set();
       modelRoot.traverse((object) => {
@@ -204,6 +227,11 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
         let renderActive = true;
         let pageVisible = document.visibilityState === "visible";
         let lastTime = performance.now();
+        let sequenceElapsed = 0;
+        let sequenceRunning = false;
+        let sequencePromise;
+        let onStageChange = () => {};
+        const sequenceDuration = 8.4;
 
         const updateScrollMetrics = () => {
           introTop = intro?.offsetTop ?? 0;
@@ -230,6 +258,29 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
           }
           const delta = Math.min((time - lastTime) / 1000, 0.05);
           lastTime = time;
+          if (stage >= 6 && sequenceRunning) {
+            sequenceElapsed = Math.min(sequenceDuration, sequenceElapsed + delta);
+            sequenceProgress = sequenceElapsed / sequenceDuration;
+            diagnosticMaterial.userData.hbSequenceProgress.value = sequenceProgress;
+            targetProgress = sequenceProgress;
+
+            const nextPhase = sequenceProgress < 0.34
+              ? "wild"
+              : sequenceProgress < 0.68
+                ? "digitized"
+                : "formed";
+            if (nextPhase !== sequencePhase) {
+              sequencePhase = nextPhase;
+              onStageChange(sequencePhase);
+            }
+            if (sequenceProgress >= 1) {
+              sequenceRunning = false;
+              sequencePhase = "complete";
+              const resolve = resolvePendingSequence;
+              resolvePendingSequence = undefined;
+              resolve?.({ completed: true });
+            }
+          }
           const damping = 1 - Math.exp(-9 * delta);
           currentProgress += (targetProgress - currentProgress) * damping;
           const seconds = time * 0.001;
@@ -254,8 +305,10 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
         };
         const onScroll = () => readScrollProgress();
         const onResize = () => {
-          updateScrollMetrics();
-          readScrollProgress();
+          if (stage < 6) {
+            updateScrollMetrics();
+            readScrollProgress();
+          }
           fitCamera();
           renderer.render(scene, camera);
         };
@@ -280,14 +333,35 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
             animationFrameId = 0;
           }
         };
+        startStage6Sequence = ({ onStageChange: stageChangeHandler } = {}) => {
+          if (stage < 6) return Promise.resolve({ completed: false });
+          if (sequencePromise) return sequencePromise;
+          onStageChange = typeof stageChangeHandler === "function" ? stageChangeHandler : () => {};
+          sequenceElapsed = 0;
+          sequenceProgress = 0;
+          sequencePhase = "wild";
+          sequenceRunning = true;
+          targetProgress = 0;
+          currentProgress = 0;
+          diagnosticMaterial.userData.hbSequenceProgress.value = 0;
+          onStageChange(sequencePhase);
+          sequencePromise = new Promise((resolve) => {
+            resolvePendingSequence = resolve;
+          });
+          renderActive = true;
+          startRendering();
+          return sequencePromise;
+        };
 
-        updateScrollMetrics();
-        readScrollProgress();
-        window.addEventListener("scroll", onScroll, { passive: true });
+        if (stage < 6) {
+          updateScrollMetrics();
+          readScrollProgress();
+          window.addEventListener("scroll", onScroll, { passive: true });
+        }
         window.addEventListener("resize", onResize, { passive: true });
         if (stage >= 4) document.addEventListener("visibilitychange", onVisibilityChange);
         removeStage3Listeners = () => {
-          window.removeEventListener("scroll", onScroll);
+          if (stage < 6) window.removeEventListener("scroll", onScroll);
           window.removeEventListener("resize", onResize);
           document.removeEventListener("visibilitychange", onVisibilityChange);
         };
@@ -300,6 +374,7 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
       refresh: refreshStage3Layout,
       setRenderActive: updateRenderActive,
       setSequenceProgress: updateSequenceProgress,
+      startSequence: startStage6Sequence,
       getDiagnostics: () => ({
         stage,
         canvasConnected: Boolean(renderer?.domElement.isConnected),
@@ -313,6 +388,8 @@ export async function initIOSSafariDiagnosticScene(container, { stage = 0 } = {}
         modelLoaded,
         modelVisible: Boolean(modelRoot?.visible),
         animationFrameActive: stage >= 3 ? animationFrameId !== 0 : false,
+        sequencePhase,
+        sequenceProgress,
       }),
       destroy,
     };
