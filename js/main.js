@@ -16,11 +16,19 @@ const IS_IOS_SAFARI =
   /Safari/i.test(userAgent) &&
   !isAlternateIOSBrowser;
 
+// iOS Safari diagnostic ladder. Change only this value between device tests.
+// 0 = V3 stable website (no Three.js/WebGL); 1 = empty Three.js renderer only.
+const IOS_SAFARI_3D_STAGE = 1;
+
 // Keep Three.js and every dependent WebGL/model module out of iOS Safari for
 // Diagnostic V3. Other browsers begin fetching the existing scene immediately.
 const kingSceneModulePromise = IS_IOS_SAFARI
   ? null
   : import("./king-scene.js?v=20260923-fire-wave5");
+const iosSafariSceneModulePromise =
+  IS_IOS_SAFARI && IOS_SAFARI_3D_STAGE >= 1
+    ? import("./ios-safari-diagnostic-scene.js?v=20260923-stage1")
+    : null;
 
 function resetScrollPosition() {
   const root = document.documentElement;
@@ -57,6 +65,7 @@ const loading = initLoadingLayer(document.querySelector("[data-loading-layer]"))
 
 let sceneApi;
 let introTimeline;
+let iosSafariDiagnosticScene;
 let destroyHomepageAnimations = () => {};
 
 const diagnosticSceneApi = Object.freeze({
@@ -67,15 +76,36 @@ const diagnosticSceneApi = Object.freeze({
 });
 
 async function startIOSSafariDiagnostic() {
-  document.documentElement.classList.add("is-ready", "no-webgl", "ios-safari-diagnostic-v3");
+  let activeStage = 0;
+
+  if (IOS_SAFARI_3D_STAGE >= 1) {
+    try {
+      const { initIOSSafariDiagnosticScene } = await iosSafariSceneModulePromise;
+      iosSafariDiagnosticScene = initIOSSafariDiagnosticScene(sceneContainer, {
+        stage: IOS_SAFARI_3D_STAGE,
+      });
+      activeStage = iosSafariDiagnosticScene.stage;
+    } catch (error) {
+      iosSafariDiagnosticScene?.destroy();
+      iosSafariDiagnosticScene = undefined;
+      console.error(
+        "[Holy Buck] iOS Safari Diagnostic V4 could not create Stage 1 WebGL; using Stage 0.",
+        error,
+      );
+    }
+  }
+
+  document.documentElement.classList.add("is-ready", "no-webgl", "ios-safari-diagnostic-v4");
   sceneContainer?.setAttribute("hidden", "");
   sceneContainer?.setAttribute("aria-hidden", "true");
 
   window.__HOLY_BUCK__ = Object.freeze({
     diagnostics: () => ({
       iosSafariDiagnostic: true,
-      webglInitialized: false,
-      modelStatus: "bypassed",
+      configuredStage: IOS_SAFARI_3D_STAGE,
+      activeStage,
+      webglInitialized: activeStage >= 1,
+      modelStatus: activeStage >= 1 ? "empty-scene" : "bypassed",
     }),
   });
 
@@ -168,6 +198,7 @@ window.addEventListener(
   () => {
     introTimeline?.destroy();
     destroyHomepageAnimations();
+    iosSafariDiagnosticScene?.destroy();
     sceneApi?.destroy();
   },
   { once: true },
