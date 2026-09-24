@@ -539,6 +539,7 @@ function loadGLTF(loader, url, onProgress) {
 
 export function initKingScene(container, options = {}) {
   if (!container) throw new Error("The King scene requires a container element.");
+  const safariSafeMode = Boolean(options.safariSafeMode);
 
   const {
     naturalModelUrls = DEFAULT_NATURAL_MODEL_URLS,
@@ -549,7 +550,6 @@ export function initKingScene(container, options = {}) {
   const castingPatternUrls = options.castingPatternUrls ??
     (options.castingPatternUrl ? [options.castingPatternUrl] : DEFAULT_PATTERN_URLS);
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const safariSafeMode = Boolean(options.safariSafeMode);
   const initializationStartedAt = performance.now();
 
   const scene = new THREE.Scene();
@@ -571,13 +571,16 @@ export function initKingScene(container, options = {}) {
   renderer.shadowMap.autoUpdate = false;
   container.appendChild(renderer.domElement);
 
-  const roomEnvironment = new RoomEnvironment();
-  const pmremGenerator = new THREE.PMREMGenerator(renderer);
-  const environmentTarget = pmremGenerator.fromScene(roomEnvironment, 0.04);
-  scene.environment = environmentTarget.texture;
-  scene.environmentIntensity = 0.52;
-  roomEnvironment.dispose();
-  pmremGenerator.dispose();
+  let environmentTarget = null;
+  if (!safariSafeMode) {
+    const roomEnvironment = new RoomEnvironment();
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    environmentTarget = pmremGenerator.fromScene(roomEnvironment, 0.04);
+    scene.environment = environmentTarget.texture;
+    scene.environmentIntensity = 0.52;
+    roomEnvironment.dispose();
+    pmremGenerator.dispose();
+  }
 
   const stage = new THREE.Group();
   const sequenceRig = new THREE.Group();
@@ -722,7 +725,7 @@ export function initKingScene(container, options = {}) {
     container.dataset.viewportMode = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
 
     const shadowSize = safariSafeMode ? 256 : (isMobile ? 512 : 1024);
-    if (key.shadow.mapSize.x !== shadowSize) {
+    if (!safariSafeMode && key.shadow.mapSize.x !== shadowSize) {
       key.shadow.map?.dispose();
       key.shadow.map = null;
       key.shadow.mapSize.set(shadowSize, shadowSize);
@@ -812,7 +815,7 @@ export function initKingScene(container, options = {}) {
     fill.lookAt(stage.position);
     dust.visible = !isMobile;
     if (patternRoot) updatePatternFrameScale();
-    if (!safariSafeMode) renderer.shadowMap.needsUpdate = true;
+    renderer.shadowMap.needsUpdate = true;
   };
 
   const updatePatternFrameScale = () => {
@@ -1203,8 +1206,8 @@ export function initKingScene(container, options = {}) {
         renderer.capabilities.getMaxAnisotropy(),
       );
       const productionVisualBounds = new THREE.Box3().setFromObject(naturalProduction.root, true);
-      wireframeMaterial = createWireframeOverlay(naturalProduction.root);
-      vertexPointMaterial = createVertexPointOverlay(naturalProduction.root);
+      wireframeMaterial = safariSafeMode ? null : createWireframeOverlay(naturalProduction.root);
+      vertexPointMaterial = safariSafeMode ? null : createVertexPointOverlay(naturalProduction.root);
       productionFadeStates = prepareMaterialFade(naturalProduction.root);
       product.remove(fallback.root);
       naturalRoot = naturalProduction.root;
@@ -1431,6 +1434,11 @@ export function initKingScene(container, options = {}) {
   };
 
   const scheduleCastingPatternLoad = () => {
+    if (safariSafeMode) {
+      patternResult = "disabled-safari-safe-mode";
+      container.dataset.patternStatus = patternResult;
+      return;
+    }
     if (optionalLoadScheduled) return;
     optionalLoadScheduled = true;
     if ("requestIdleCallback" in window) {
@@ -1536,7 +1544,7 @@ export function initKingScene(container, options = {}) {
       container.removeEventListener("pointerleave", onPointerLeave);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       disposeObject(scene);
-      environmentTarget.dispose();
+      environmentTarget?.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },

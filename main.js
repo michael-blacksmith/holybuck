@@ -3,6 +3,13 @@ import { initIntroTimeline } from "./intro-timeline.js?v=20260923-regression-fix
 import { initKingScene } from "./king-scene.js?v=20260923-fire-wave5";
 import { initLoadingLayer } from "./loading.js?v=20260923-regression-fix";
 
+const HB_UA = navigator.userAgent;
+const HB_IS_IPHONE_SAFARI =
+  /iPhone|iPad|iPod/.test(HB_UA) &&
+  /Safari/.test(HB_UA) &&
+  !/CriOS|FxiOS|EdgiOS|OPiOS/.test(HB_UA);
+
+
 function resetScrollPosition() {
   const root = document.documentElement;
   const previousBehavior = root.style.scrollBehavior;
@@ -42,18 +49,20 @@ let destroyHomepageAnimations = () => {};
 
 async function startExperience() {
   try {
-    const isIOSSafari = /iP(hone|ad|od)/.test(navigator.userAgent) &&
-      /WebKit/.test(navigator.userAgent) &&
-      !/(CriOS|FxiOS|EdgiOS|OPiOS)/.test(navigator.userAgent);
-
     sceneApi = initKingScene(sceneContainer, {
-      safariSafeMode: isIOSSafari,
       onLoadProgress: (progress) => loading.setProgress(progress),
-      naturalModelUrls: ["./models/king-right-natural.glb"],
-      modelUrls: ["./models/king-web.glb", "./models/king.glb"],
-      castingPatternUrls: isIOSSafari
-        ? ["./models/plakingforwebsite-web.glb"]
+      // iPhone Safari safe mode: avoid the heavy photogrammetry texture/model
+      // and never request the optional PLA model. Desktop stays unchanged.
+      naturalModelUrls: HB_IS_IPHONE_SAFARI
+        ? ["./models/king-web.glb"]
+        : ["./models/king-right-natural.glb"],
+      modelUrls: HB_IS_IPHONE_SAFARI
+        ? ["./models/king-web.glb"]
+        : ["./models/king-web.glb", "./models/king.glb"],
+      castingPatternUrls: HB_IS_IPHONE_SAFARI
+        ? []
         : ["./models/plakingforwebsite-web.glb", "./models/plakingforwebsite.glb"],
+      safariSafeMode: HB_IS_IPHONE_SAFARI,
     });
 
     window.__HOLY_BUCK__ = Object.freeze({
